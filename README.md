@@ -1,1 +1,1 @@
-This bot checks, it there a question avaiable for solving or not.
+This bot checks, it there a question available for solving or not.
