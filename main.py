@@ -3,7 +3,6 @@ import time
 from customtkinter import *
 from tkinter import Menu
 import threading
-import configure
 from configparser import ConfigParser
 import os
 
@@ -13,7 +12,7 @@ class App:
         self.main = master
         self.main.title('Chegg Bot')
         self.state = 'LoggingIn'
-        self.questions_this_month = 'None'
+        self.questions_this_month = 0
         self.money_this_month = 0
 
         ## Creating or Reading the configure file
@@ -32,29 +31,30 @@ class App:
         self.config.read('./config.ini')
         self.username = StringVar(value=self.config['DEFAULT']['username'])
         self.password = StringVar(value=self.config['DEFAULT']['password'])
-        self.money_per_question = StringVar(value=self.config['DEFAULT']['money_per_question'])
+        self.money_per_question = float(self.config['DEFAULT']['money_per_question'])
 
         # Menu bar
         menu_bar = Menu(self.main)
         setting_menu = Menu(menu_bar, tearoff=False)
         menu_bar.add_cascade(label="Options", menu=setting_menu)
-        setting_menu.add_command(label='Settings', command=lambda: [self.create_setting_window()])
+        setting_menu.add_command(label='Settings', command=self.create_setting_window)
         setting_menu.add_separator()
         setting_menu.add_command(label="Exit", command=lambda: [self.main.destroy()])
         self.main.configure(menu=menu_bar)
-        
 
         # Status text line
         self.status = CTkLabel(master=self.main, text='Press Start to start looking for question')
         self.status.pack(side = 'top', pady=10, fill='both')
 
+        # Account Stats
         self.stats = CTkFrame(master=self.main)
         self.stats.pack(side='top', padx=10, pady=10, fill='both')
-        self.QTM = CTkLabel(master=self.stats, text=f'Solved: {self.questions_this_month}', )
+        self.QTM = CTkLabel(master=self.stats, text=f'Solved: {self.questions_this_month}')
         self.QTM.grid(row=0, column= 0, padx=(170, 10), pady=10)
-        self.MTM = CTkLabel(master=self.stats, text=f'Earned: {self.money_this_month}', )
+        self.MTM = CTkLabel(master=self.stats, text=f'Earned: {self.money_this_month}')
         self.MTM.grid(row=0, column= 1, padx=10, pady=10)
         
+        # Buttons
         self.button_frame = CTkFrame(master=self.main)
         self.button_frame.pack(side='top', padx=10, pady=10, fill='both')
         self.start_button = CTkButton(master=self.button_frame, text='Start', command=self.start_app, width=100)
@@ -63,11 +63,6 @@ class App:
         self.pause_button.grid(row=1, column=1, padx=10, pady=10)
         self.stop_button = CTkButton(master=self.button_frame, text='Close', command=self.stop_app, width=100)
         self.stop_button.grid(row=1, column=2, padx=10, pady=10)
-
-
-        ###########
-        # self.create_setting_window()
-
 
         self.main.geometry('500x200')
         self.main.resizable(False, False)
@@ -99,10 +94,22 @@ class App:
                     "[data-test=\"login-cred-pwd-input\"]").fill(self.password.get())
                 self.page.locator("[data-test=\"login-cred-submit\"]").click()
 
+                # Checking for question solved
+                self.page.locator("[data-test=\"select-stats-dropdown\"]").click()
+                self.page.get_by_role("option", name="This month").click()
+
+                # Update the solved and earned labels
+                self.CheckSolvedQuestions()
+
                 self.state = 'CheckForQuestion'
 
             elif self.state == 'CheckForQuestion':
                 self.status.configure(text='Checking for Questions')
+
+                # Update the solved and earned labels
+                self.CheckSolvedQuestions()
+
+                # Checking for question
                 self.page.locator("""[data-test-id=\"expert-qna-nav-link\"]""").click()
 
                 # Wait until the page is loaded completely
@@ -209,7 +216,21 @@ class App:
         
         # Close the setting window after saving the settings
         self.setting_window.destroy()
+    
+    def CheckSolvedQuestions(self):
+        try:
+            # Click on the home page
+            self.page.locator("""[data-test-id=\"qna-authoring-nav-link\"]""").click()
+            # Getting solved question by it's div selector
+            div_content = self.page.inner_text('#__next > main > div > div > div.sc-bYMpWt.iWgWjM > div > div.lmxvvx-1.hkMGGn > div > div.sc-idXgbr.ipzDSK > div > div > div > div:nth-child(3)')
+            self.questions_this_month = int(div_content.split()[1])
+            self.money_this_month = self.money_per_question * self.questions_this_month
 
+            # Updates the labels
+            self.QTM.configure(text=f'Solved: {self.questions_this_month}')
+            self.MTM.configure(text=f'Earned: {self.money_this_month}')
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     App(CTk())
