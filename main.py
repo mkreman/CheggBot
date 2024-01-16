@@ -1,10 +1,24 @@
-from playwright.sync_api import Playwright, sync_playwright
+from playwright.sync_api import Playwright, sync_playwright, TimeoutError
 import time
 from customtkinter import *
 from tkinter import Menu
 import threading
 from configparser import ConfigParser
 import os
+from plyer import notification
+
+
+## Creating or Reading the configure file
+config = ConfigParser()
+# If configure file does not exit create it
+if not os.path.exists('./config.ini'):
+    config['DEFAULT'] = {
+        'username': '',
+        'password': '',
+        'money_per_question': ''
+    }
+    with open("config.ini", "w") as f:
+        config.write(f)
 
 
 class App:
@@ -14,24 +28,13 @@ class App:
         self.state = 'LoggingIn'
         self.questions_this_month = 0
         self.money_this_month = 0
-
-        ## Creating or Reading the configure file
-        self.config = ConfigParser()
-        # If configure file does not exit create it
-        if not os.path.exists('./config.ini'):
-            config['DEFAULT'] = {
-                'username': '',
-                'password': '',
-                'money_per_question': ''
-            }
-            with open("config.ini", "w") as f:
-                config.write(f)
+        global config
 
         # Reading the configure file
-        self.config.read('./config.ini')
-        self.username = StringVar(value=self.config['DEFAULT']['username'])
-        self.password = StringVar(value=self.config['DEFAULT']['password'])
-        self.money_per_question = float(self.config['DEFAULT']['money_per_question'])
+        config.read('./config.ini')
+        self.username = StringVar(value=config['DEFAULT']['username'])
+        self.password = StringVar(value=config['DEFAULT']['password'])
+        self.money_per_question = DoubleVar(value=float(config['DEFAULT']['money_per_question']))
 
         # Menu bar
         menu_bar = Menu(self.main)
@@ -64,10 +67,25 @@ class App:
         self.stop_button = CTkButton(master=self.button_frame, text='Close', command=self.stop_app, width=100)
         self.stop_button.grid(row=1, column=2, padx=10, pady=10)
 
+        #!! Stay on Top Checkbutton
+        # def checkbox_event():
+        #     print("checkbox toggled, current value:", check_var.get())
+
+        # check_var = customtkinter.StringVar(value="on")
+        # checkbox = customtkinter.CTkCheckBox(self.main, text="CTkCheckBox", command=checkbox_event,
+        #                                     variable=check_var, onvalue="on", offvalue="off")
+
+        # Check if the password entered or not
+        self.check_credentials()
+
         self.main.geometry('500x200')
         self.main.resizable(False, False)
         self.main.mainloop()
 
+    def check_credentials(self):
+        if self.username.get() == '' or self.password.get() == '':
+            self.create_setting_window()
+        
     def start_app(self):
         self.thread = threading.Thread(target=self.start_process, daemon=True)
         self.thread.start()
@@ -75,36 +93,50 @@ class App:
     def start_process(self):
         self.start_button.configure(state='disabled')
         self.pause_button.configure(state='normal')
+
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(headless=False)
+        context = self.browser.new_context()
+        self.page = context.new_page()
+        
         while True:
             if self.state == 'LoggingIn':
                 self.status.configure(text='Logging In')
 
-                self.playwright = sync_playwright().start()
-                self.browser = self.playwright.chromium.launch(headless=False)
-                context = self.browser.new_context()
-                self.page = context.new_page()
-                self.page.goto(
-                    "https://expert.chegg.com/auth/login?redirectTo=https%3A%2F%2Fexpert.chegg.com%2Fqna%2Fauthoring")
+                self.page.goto("https://expert.chegg.com/auth/login?redirectTo=https%3A%2F%2Fexpert.chegg.com%2Fqna%2Fauthoring")
                 self.page.locator("[data-test=\"login-email-input\"]").click()
-                self.page.locator(
-                    "[data-test=\"login-email-input\"]").fill(self.username.get())
+                self.page.locator("[data-test=\"login-email-input\"]").fill(self.username.get())
                 self.page.locator("[data-test=\"login-email-submit\"]").click()
+                # Check for the username
+                try:
+                    if self.page.inner_text("""//*[@id="login-email-error-banner-message"]""", timeout=5000):
+                        self.status.configure(text='Wrong Username. Fill a valid username and try again.', text_color='red')
+                        self.state = 'Paused'
+                        self.start_button.configure(state='disabled')
+                        self.pause_button.configure(state='disabled')
+                        continue
+                except TimeoutError:
+                    pass
+                # Fill the password
                 self.page.locator("[data-test=\"login-cred-pwd-input\"]").click()
-                self.page.locator(
-                    "[data-test=\"login-cred-pwd-input\"]").fill(self.password.get())
+                self.page.locator("[data-test=\"login-cred-pwd-input\"]").fill(self.password.get())
                 self.page.locator("[data-test=\"login-cred-submit\"]").click()
-
-                # Checking for question solved
-                self.page.locator("[data-test=\"select-stats-dropdown\"]").click()
-                self.page.get_by_role("option", name="This month").click()
-
-                # Update the solved and earned labels
-                self.CheckSolvedQuestions()
+                # Check for the password
+                try:
+                    if self.page.inner_text("""//*[@id="login-banner-message"]""", timeout=5000):
+                        self.status.configure(text='Wrong Password. Fill a valid username and try again.', text_color='red')
+                        self.state = 'Paused'
+                        self.start_button.configure(state='disabled')
+                        self.pause_button.configure(state='disabled')
+                        continue
+                except TimeoutError:
+                    pass
 
                 self.state = 'CheckForQuestion'
 
             elif self.state == 'CheckForQuestion':
                 self.status.configure(text='Checking for Questions')
+                self.pause_button.configure(state='normal')
 
                 # Update the solved and earned labels
                 self.CheckSolvedQuestions()
@@ -126,12 +158,17 @@ class App:
             elif self.state == 'ReviewQuestion':
                 self.state = 'Paused'
                 self.pause_app()
-                self.status.configure(text='Got a Question')
+                self.status.configure(text='Review Question')
+
+                # Notification
+                notification.notify(title="Chegg Bot", message="Review Question", app_name="Chegg Bot")
+                # , app_icon='./images/logo.ico')
 
             elif self.state == 'Paused':
-                time.sleep(10*60)
+                time.sleep(10)
 
     def pause_app(self):
+        self.state = 'Paused'
         self.status.configure(text='Application is paused')
         self.pause_button.configure(state='disabled')
         self.start_button.configure(state='normal', command=self.resume_process)
@@ -208,29 +245,33 @@ class App:
             self.main.lift()
 
     def save_configuration(self):
-        self.config.set('DEFAULT', 'username', self.username.get())
-        self.config.set('DEFAULT', 'password', self.password.get())
-        self.config.set('DEFAULT', 'money_per_question', self.money_per_question.get())
+        config.set('DEFAULT', 'username', self.username.get())
+        config.set('DEFAULT', 'password', self.password.get())
+        config.set('DEFAULT', 'money_per_question', str(self.money_per_question.get()))
         with open('./config.ini', 'w') as f:
-            self.config.write(f)
+            config.write(f)
         
         # Close the setting window after saving the settings
         self.setting_window.destroy()
+        self.state = 'LoggingIn'
+        self.status.configure(text='Trying to Login', text_color='white')
     
     def CheckSolvedQuestions(self):
+        # Click on the home page
+        self.page.locator("""[data-test-id=\"qna-authoring-nav-link\"]""").click()
+        self.page.locator("[data-test=\"select-stats-dropdown\"]").click()
+        self.page.get_by_role("option", name="This month").click()
         try:
-            # Click on the home page
-            self.page.locator("""[data-test-id=\"qna-authoring-nav-link\"]""").click()
-            # Getting solved question by it's div selector
-            div_content = self.page.inner_text('#__next > main > div > div > div.sc-bYMpWt.iWgWjM > div > div.lmxvvx-1.hkMGGn > div > div.sc-idXgbr.ipzDSK > div > div > div > div:nth-child(3)')
-            self.questions_this_month = int(div_content.split()[1])
-            self.money_this_month = self.money_per_question * self.questions_this_month
-
-            # Updates the labels
-            self.QTM.configure(text=f'Solved: {self.questions_this_month}')
-            self.MTM.configure(text=f'Earned: {self.money_this_month}')
+            div_content = self.page.locator("[data-test-id=\"answered\"]").text_content()
+            self.questions_this_month = int(div_content.split(':')[1])
+            self.money_this_month = self.money_per_question.get() * self.questions_this_month
         except Exception:
-            pass
+            return
+
+        # Updates the labels
+        self.QTM.configure(text=f'Solved: {self.questions_this_month}')
+        self.MTM.configure(text=f'Earned: {self.money_this_month}')
+        
 
 if __name__ == '__main__':
     App(CTk())
