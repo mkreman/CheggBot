@@ -6,9 +6,9 @@ import threading
 from configparser import ConfigParser
 import os
 from plyer import notification
+from PIL import Image
 
-
-## Creating or Reading the configure file
+# Creating or Reading the configure file
 config = ConfigParser()
 # If configure file does not exit create it
 if not os.path.exists('./config.ini'):
@@ -26,6 +26,7 @@ class App:
         self.main = master
         self.main.title('Chegg Bot')
         self.state = 'LoggingIn'
+        self.on_value = StringVar(value="off")
         self.questions_this_month = 0
         self.money_this_month = 0
         global config
@@ -47,45 +48,56 @@ class App:
 
         # Status text line
         self.status = CTkLabel(master=self.main, text='Press Start to start looking for question')
-        self.status.pack(side = 'top', pady=10, fill='both')
+        self.status.pack(side='top', pady=10, fill='both')
 
-        # Account Stats
-        self.stats = CTkFrame(master=self.main)
-        self.stats.pack(side='top', padx=10, pady=10, fill='both')
-        self.QTM = CTkLabel(master=self.stats, text=f'Solved: {self.questions_this_month}')
-        self.QTM.grid(row=0, column= 0, padx=(170, 10), pady=10)
-        self.MTM = CTkLabel(master=self.stats, text=f'Earned: {self.money_this_month}')
-        self.MTM.grid(row=0, column= 1, padx=10, pady=10)
-        
         # Buttons
         self.button_frame = CTkFrame(master=self.main)
         self.button_frame.pack(side='top', padx=10, pady=10, fill='both')
         self.start_button = CTkButton(master=self.button_frame, text='Start', command=self.start_app, width=100)
         self.start_button.grid(row=1, column=0, padx=(70, 10), pady=10)
-        self.pause_button = CTkButton(master=self.button_frame, text='Pause', command=self.pause_app, state='disabled', width=100)
+        self.pause_button = CTkButton(master=self.button_frame, text='Pause', command=self.pause_app, state='disabled',
+                                      width=100)
         self.pause_button.grid(row=1, column=1, padx=10, pady=10)
         self.stop_button = CTkButton(master=self.button_frame, text='Close', command=self.stop_app, width=100)
         self.stop_button.grid(row=1, column=2, padx=10, pady=10)
 
-        #!! Stay on Top Checkbutton
-        # def checkbox_event():
-        #     print("checkbox toggled, current value:", check_var.get())
+        # Taskbar
+        self.taskbar_frame = CTkFrame(master=self.main, border_width=1)
+        self.taskbar_frame.pack(side='bottom', fill='x')
+        self.QTM = CTkLabel(master=self.taskbar_frame, text=f'Solved: {self.questions_this_month}', font=('', 12))
+        self.QTM.pack(side='left', padx=(7, 0), pady=0)
+        self.MTM = CTkLabel(master=self.taskbar_frame, text=f'Earned: {self.money_this_month}', font=('', 12))
+        self.MTM.pack(side='left', padx=7, pady=0)
 
-        # check_var = customtkinter.StringVar(value="on")
-        # checkbox = customtkinter.CTkCheckBox(self.main, text="CTkCheckBox", command=checkbox_event,
-        #                                     variable=check_var, onvalue="on", offvalue="off")
+        CTkCheckBox(master=self.taskbar_frame,
+                    text="Always on Top",
+                    font=('', 12),
+                    command=self.checkbox_event,
+                    variable=self.on_value,
+                    onvalue="on",
+                    offvalue="off",
+                    checkbox_width=15,
+                    checkbox_height=15,
+                    hover=False,
+                    border_width=2).pack(side='right', padx=(0, 7))
 
         # Check if the password entered or not
         self.check_credentials()
 
-        self.main.geometry('500x200')
+        self.main.geometry('450x175')
         self.main.resizable(False, False)
         self.main.mainloop()
 
     def check_credentials(self):
         if self.username.get() == '' or self.password.get() == '':
             self.create_setting_window()
-        
+
+    def checkbox_event(self):
+        if self.on_value.get() == 'on':
+            self.main.attributes('-topmost', True)
+        else:
+            self.main.attributes('-topmost', False)
+
     def start_app(self):
         self.thread = threading.Thread(target=self.start_process, daemon=True)
         self.thread.start()
@@ -98,19 +110,21 @@ class App:
         self.browser = self.playwright.chromium.launch(headless=False)
         context = self.browser.new_context()
         self.page = context.new_page()
-        
+
         while True:
             if self.state == 'LoggingIn':
                 self.status.configure(text='Logging In')
 
-                self.page.goto("https://expert.chegg.com/auth/login?redirectTo=https%3A%2F%2Fexpert.chegg.com%2Fqna%2Fauthoring")
+                self.page.goto(
+                    "https://expert.chegg.com/auth/login?redirectTo=https%3A%2F%2Fexpert.chegg.com%2Fqna%2Fauthoring")
                 self.page.locator("[data-test=\"login-email-input\"]").click()
                 self.page.locator("[data-test=\"login-email-input\"]").fill(self.username.get())
                 self.page.locator("[data-test=\"login-email-submit\"]").click()
                 # Check for the username
                 try:
                     if self.page.inner_text("""//*[@id="login-email-error-banner-message"]""", timeout=5000):
-                        self.status.configure(text='Wrong Username. Fill a valid username and try again.', text_color='red')
+                        self.status.configure(text='Wrong Username. Fill a valid username and try again.',
+                                              text_color='red')
                         self.state = 'Paused'
                         self.start_button.configure(state='disabled')
                         self.pause_button.configure(state='disabled')
@@ -124,7 +138,8 @@ class App:
                 # Check for the password
                 try:
                     if self.page.inner_text("""//*[@id="login-banner-message"]""", timeout=5000):
-                        self.status.configure(text='Wrong Password. Fill a valid username and try again.', text_color='red')
+                        self.status.configure(text='Wrong Password. Fill a valid username and try again.',
+                                              text_color='red')
                         self.state = 'Paused'
                         self.start_button.configure(state='disabled')
                         self.pause_button.configure(state='disabled')
@@ -148,7 +163,8 @@ class App:
                 self.page.wait_for_load_state("networkidle")
 
                 # Checking if there is 'Start Solving' button available using XPath
-                if self.page.locator("""//*[@id="__next"]/main/div/div/footer/div/div[1]/div[2]/button/span/span[1]""").count() == 1:
+                if self.page.locator(
+                        """//*[@id="__next"]/main/div/div/footer/div/div[1]/div[2]/button/span/span[1]""").count() == 1:
                     self.state = 'ReviewQuestion'
                 else:
                     self.status.configure(text='No Question found. The page will be refreshed in 10 seconds.')
@@ -194,34 +210,50 @@ class App:
 
             CTkLabel(master=self.top_frame, text='Username').grid(row=0, column=0, padx=10, pady=4, sticky=E)
             CTkEntry(master=self.top_frame,
-                    textvariable=self.username,
-                    width=250,
-                    height=30,
-                    justify='right'
-                    ).grid(row=0, column=1, padx=10, pady=10)
+                     textvariable=self.username,
+                     width=250,
+                     height=30,
+                     justify='right'
+                     ).grid(row=0, column=1, padx=10, pady=10)
 
-            CTkLabel(master=self.top_frame, text='Chegg Password').grid(row=1, column=0, padx=10, pady=(0, 10), sticky=E)
+            CTkLabel(master=self.top_frame, text='Chegg Password').grid(row=1, column=0, padx=10, pady=(0, 10),
+                                                                        sticky=E)
             CTkEntry(master=self.top_frame,
-                    textvariable=self.password,
-                    width=250,
-                    height=30,
-                    show='*',
-                    justify='right'
-                    ).grid(row=1, column=1, padx=10, pady=(0, 10))
+                     textvariable=self.password,
+                     width=250,
+                     height=30,
+                     show='*',
+                     justify='right'
+                     ).grid(row=1, column=1, padx=10, pady=(0, 10))
 
-            CTkLabel(master=self.top_frame, text='Per Question Payment').grid(row=2, column=0, padx=10, pady=(0, 10), sticky=E)
+            # Find right way to do it
+            # visibility_on_image = CTkImage(light_image=Image.open("./icons/visibility_on_white.ico"),
+            #                                dark_image=Image.open("icons/visibility_on_black.ico"))
+            # visibility_off_image = CTkImage(light_image=Image.open("icons/visibility_off_white.ico"),
+            #                                 dark_image=Image.open("icons/visibility_off_black.ico"))
+            # visibility_button = CTkButton(master=self.top_frame,
+            #                               image=visibility_on_image,
+            #                               text='',
+            #                               width=40,
+            #                               border_width=0,
+            #                               # command=change_password_entry_visibility
+            #                               )
+            visibility_button.grid(row=4, column=2, padx=4)
+
+            CTkLabel(master=self.top_frame, text='Per Question Payment').grid(row=2, column=0, padx=10, pady=(0, 10),
+                                                                              sticky=E)
             CTkEntry(master=self.top_frame,
-                    textvariable=self.money_per_question,
-                    width=250,
-                    height=30,
-                    justify='right'
-                    ).grid(row=2, column=1, padx=10, pady=(0, 10))
+                     textvariable=self.money_per_question,
+                     width=250,
+                     height=30,
+                     justify='right'
+                     ).grid(row=2, column=1, padx=10, pady=(0, 10))
 
             # Buttons
             CTkButton(master=self.bottom_frame,
                       text='Save',
                       width=100,
-                      command=self.save_configuration).pack(side=LEFT, padx=(110,4), pady=10)
+                      command=self.save_configuration).pack(side=LEFT, padx=(110, 4), pady=10)
             CTkButton(master=self.bottom_frame,
                       text='Cancel',
                       width=100,
@@ -250,12 +282,12 @@ class App:
         config.set('DEFAULT', 'money_per_question', str(self.money_per_question.get()))
         with open('./config.ini', 'w') as f:
             config.write(f)
-        
+
         # Close the setting window after saving the settings
         self.setting_window.destroy()
         self.state = 'LoggingIn'
         self.status.configure(text='Trying to Login', text_color='white')
-    
+
     def CheckSolvedQuestions(self):
         # Click on the home page
         self.page.locator("""[data-test-id=\"qna-authoring-nav-link\"]""").click()
@@ -271,7 +303,7 @@ class App:
         # Updates the labels
         self.QTM.configure(text=f'Solved: {self.questions_this_month}')
         self.MTM.configure(text=f'Earned: {self.money_this_month}')
-        
+
 
 if __name__ == '__main__':
     App(CTk())

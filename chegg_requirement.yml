@@ -1,0 +1,25 @@
+name: chegg
+channels:
+  - defaults
+dependencies:
+  - ca-certificates=2023.12.12
+  - openssl=3.0.12
+  - pip=23.3.1
+  - python=3.9.18
+  - setuptools=68.2.2
+  - sqlite=3.41.2
+  - tzdata=2023c
+  - vc=14.2
+  - vs2015_runtime=14.27.29016
+  - wheel=0.41.2
+  - pip:
+      - customtkinter==5.2.1
+      - darkdetect==0.8.0
+      - greenlet==3.0.1
+      - packaging==23.2
+      - pillow==10.2.0
+      - playwright==1.40.0
+      - plyer==2.1.0
+      - pyee==11.0.1
+      - typing-extensions==4.9.0
+prefix: C:\Users\MkReman\miniconda3\envs\chegg
